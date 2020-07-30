@@ -249,8 +249,9 @@ public class SwiftBlobStore implements BlobStore {
 
         checkNotNull(layerName, "layerName");
 
-        boolean deletionSuccessful = this.deleteByPath(layerName);
+        final String layerPrefix = keyBuilder.forLayer(layerName);
 
+        boolean deletionSuccessful = this.deleteByPath(layerPrefix);
         // If the layer has been deleted successfully update the listeners
         if (deletionSuccessful) {
             listeners.sendLayerDeleted(layerName);
@@ -279,18 +280,12 @@ public class SwiftBlobStore implements BlobStore {
 
     @Override
     public boolean delete(TileObject obj) {
-        final String objName = obj.getLayerName();
+        // final String objName = obj.getLayerName();
+        final String tilePrefix = keyBuilder.forTile(obj);
 
-        checkNotNull(objName, "Object Name");
+        boolean deleted = this.deleteByPath(tilePrefix);
 
-        // don't bother for the extra call if there are no listeners
-        if (listeners.isEmpty()) {
-            return this.deleteByPath(objName);
-        }
-
-        boolean deleted = this.deleteByPath(objName);
-
-        if (deleted) {
+        if (!listeners.isEmpty() && deleted) {
             listeners.sendTileDeleted(obj);
         }
 
@@ -394,9 +389,9 @@ public class SwiftBlobStore implements BlobStore {
     protected boolean deleteByPath(String path) {
 
         org.jclouds.blobstore.options.ListContainerOptions options =
-                new org.jclouds.blobstore.options.ListContainerOptions();
-        options.prefix(path);
-        options.recursive();
+                new org.jclouds.blobstore.options.ListContainerOptions().prefix(path).recursive();
+
+        log.debug("Removing " + path + " from container " + this.containerName + " in Swift blobstore.");
 
         this.blobStore.clearContainer(this.containerName, options);
 
