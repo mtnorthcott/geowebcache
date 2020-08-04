@@ -312,12 +312,12 @@ public class SwiftBlobStore implements BlobStore {
 
         final String gridsetPrefix = keyBuilder.forGridset(layerName, gridSetId);
 
-        boolean deletedSuccesfully =
+        boolean deletedSuccessfully =
                 this.deleteByPath(
                         gridsetPrefix, () -> listeners.sendGridSubsetDeleted(layerName, gridSetId));
 
         // return if the layer has been succesfully deleted
-        return deletedSuccesfully;
+        return deletedSuccessfully;
     }
 
     @Override
