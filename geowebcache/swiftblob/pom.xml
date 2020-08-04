@@ -23,8 +23,8 @@
         </dependency>
         <!-- jclouds OpenStack dependencies -->
         <dependency>
-            <groupId>org.apache.jclouds.api</groupId>
-            <artifactId>openstack-swift</artifactId>
+            <groupId>org.apache.jclouds</groupId>
+            <artifactId>jclouds-all</artifactId>
             <version>${jclouds.version}</version>
         </dependency>
         <!-- 3rd party dependencies -->
