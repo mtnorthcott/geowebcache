@@ -39,7 +39,6 @@ import org.jclouds.openstack.swift.v1.features.ContainerApi;
  * Java object representing the configuration for an Swift blob store. Contains methods for building
  * instance of JClouds API and Blobstore.
  */
-@SuppressWarnings("deprecation")
 public class SwiftBlobStoreInfo extends BlobStoreInfo {
 
     static Log log = LogFactory.getLog(SwiftBlobStoreInfo.class);

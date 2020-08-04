@@ -298,11 +298,8 @@ public class SwiftBlobStore implements BlobStore {
 
         final String layerPrefix = keyBuilder.forLayer(layerName);
 
-        boolean deletionSuccessful = this.deleteByPath(layerPrefix);
-        // If the layer has been deleted successfully update the listeners
-        if (deletionSuccessful) {
-            listeners.sendLayerDeleted(layerName);
-        }
+        boolean deletionSuccessful =
+                this.deleteByPath(layerPrefix, () -> listeners.sendLayerDeleted(layerName));
 
         return deletionSuccessful;
     }
@@ -315,12 +312,9 @@ public class SwiftBlobStore implements BlobStore {
 
         final String gridsetPrefix = keyBuilder.forGridset(layerName, gridSetId);
 
-        boolean deletedSuccesfully = this.deleteByPath(gridsetPrefix);
-
-        // If the layer has been deleted successfuly update the listeners
-        if (deletedSuccesfully) {
-            listeners.sendGridSubsetDeleted(layerName, gridSetId);
-        }
+        boolean deletedSuccesfully =
+                this.deleteByPath(
+                        gridsetPrefix, () -> listeners.sendGridSubsetDeleted(layerName, gridSetId));
 
         // return if the layer has been succesfully deleted
         return deletedSuccesfully;
@@ -331,11 +325,7 @@ public class SwiftBlobStore implements BlobStore {
         // final String objName = obj.getLayerName();
         final String tilePrefix = keyBuilder.forTile(obj);
 
-        boolean deleted = this.deleteByPath(tilePrefix);
-
-        if (!listeners.isEmpty() && deleted) {
-            listeners.sendTileDeleted(obj);
-        }
+        boolean deleted = this.deleteByPath(tilePrefix, () -> listeners.sendTileDeleted(obj));
 
         return deleted;
     }
@@ -438,17 +428,59 @@ public class SwiftBlobStore implements BlobStore {
         return deletionSuccessful;
     }
 
+    private interface IBlobStoreListenerNotifier {
+        void notifyListeners();
+    }
+
+    private class SwiftBlobStoreDeleteRunnable implements Runnable {
+        private final RegionScopedSwiftBlobStore blobStore;
+        private final String path;
+        private final String container;
+        private final IBlobStoreListenerNotifier notifier;
+
+        private SwiftBlobStoreDeleteRunnable(
+                RegionScopedSwiftBlobStore blobStore,
+                String path,
+                String container,
+                IBlobStoreListenerNotifier notifier) {
+            this.blobStore = blobStore;
+            this.path = path;
+            this.container = container;
+            this.notifier = notifier;
+        }
+
+        @Override
+        public void run() {
+            org.jclouds.blobstore.options.ListContainerOptions options =
+                    new org.jclouds.blobstore.options.ListContainerOptions()
+                            .prefix(path)
+                            .recursive();
+
+            blobStore.clearContainer(container, options);
+
+            // NOTE: this is messy but it seems to work.
+            // there might be a more effecient way of doing this.
+            boolean deleted = blobStore.list(container, options).isEmpty();
+
+            if (deleted && notifier != null) {
+                notifier.notifyListeners();
+            }
+        }
+    }
+
+    protected boolean deleteByPath(String path, IBlobStoreListenerNotifier notifier) {
+        new Thread(new SwiftBlobStoreDeleteRunnable(blobStore, path, containerName, notifier))
+                .start();
+
+        log.debug("Removing " + path + " from container " + containerName + " in Swift blobstore.");
+
+        // This operation can take a long time to complete and can
+        // lead to timeout errors for the end-user when handled as a blocking
+        // request. To conform with the GWC API, assume a successful response
+        return true;
+    }
+
     protected boolean deleteByPath(String path) {
-
-        org.jclouds.blobstore.options.ListContainerOptions options =
-                new org.jclouds.blobstore.options.ListContainerOptions().prefix(path).recursive();
-
-        log.debug("Removing " + path + " from container " + this.containerName + " in Swift blobstore.");
-
-        this.blobStore.clearContainer(this.containerName, options);
-
-        // NOTE: this is messy but it seems to work.
-        // there might be a more effecient way of doing this.
-        return this.blobStore.list(this.containerName, options).isEmpty();
+        return deleteByPath(path, null);
     }
 }
