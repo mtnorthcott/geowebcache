@@ -31,7 +31,7 @@ import org.geowebcache.storage.TileObject;
 import org.geowebcache.storage.TileRange;
 
 /** Provides methods to retrieve path information for tile objects. */
-final class TMSKeyBuilder {
+public final class TMSKeyBuilder {
 
     private static final String DELIMITER = "/";
 

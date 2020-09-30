@@ -376,7 +376,7 @@ public class SwiftBlobStore implements BlobStore {
         return deletionSuccessful;
     }
 
-    private interface IBlobStoreListenerNotifier {
+    protected interface IBlobStoreListenerNotifier {
         void notifyListeners();
     }
 
