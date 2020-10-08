@@ -92,8 +92,7 @@ public class SwiftUploadTask implements Runnable {
             }
             tile.notifyListeners(listeners);
         } catch (HttpResponseException e) {
-            log.warn(e.getMessage());
-            throw e;
+            log.warn(String.format("Swift tile upload failed: %s", e.getMessage()));
         } catch (IOException e) {
             // pass
         }

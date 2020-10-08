@@ -71,7 +71,7 @@ public class SwiftBlobStore implements BlobStore {
     private final RegionScopedSwiftBlobStore blobStore;
 
     private final ThreadPoolExecutor executor;
-    private final BlockingQueue<Runnable> uploadQueue;
+    private final BlockingQueue<Runnable> taskQueue;
 
     public SwiftBlobStore(SwiftBlobStoreInfo config, TileLayerDispatcher layers) {
 
@@ -89,14 +89,14 @@ public class SwiftBlobStore implements BlobStore {
         blobStoreContext = config.getBlobStore();
         blobStore = (RegionScopedSwiftBlobStore) blobStoreContext.getBlobStore(config.getRegion());
 
-        uploadQueue = new LinkedBlockingQueue<>(1000);
+        taskQueue = new LinkedBlockingQueue<>(1000);
         executor =
                 new ThreadPoolExecutor(
                         2,
                         32,
                         10L,
                         TimeUnit.SECONDS,
-                        uploadQueue,
+                        taskQueue,
                         new ThreadPoolExecutor.CallerRunsPolicy());
     }
 
@@ -129,7 +129,7 @@ public class SwiftBlobStore implements BlobStore {
             final String key = keyBuilder.forTile(obj);
 
             executor.execute(new SwiftUploadTask(key, tile, listeners, objectApi));
-            log.debug("Added request to upload queue. Queue length is now " + uploadQueue.size());
+            log.debug("Added upload request to task queue. Queue length is now " + taskQueue.size());
         } catch (IOException e) {
             throw new StorageException("Could not process tile object for upload.");
         }
@@ -380,13 +380,14 @@ public class SwiftBlobStore implements BlobStore {
         void notifyListeners();
     }
 
-    private class SwiftBlobStoreDeleteRunnable implements Runnable {
+    private class SwiftDeleteTask implements Runnable {
+        private static final int RETRIES = 5;
         private final RegionScopedSwiftBlobStore blobStore;
         private final String path;
         private final String container;
         private final IBlobStoreListenerNotifier notifier;
 
-        private SwiftBlobStoreDeleteRunnable(
+        private SwiftDeleteTask(
                 RegionScopedSwiftBlobStore blobStore,
                 String path,
                 String container,
@@ -399,28 +400,56 @@ public class SwiftBlobStore implements BlobStore {
 
         @Override
         public void run() {
-            org.jclouds.blobstore.options.ListContainerOptions options =
+            final org.jclouds.blobstore.options.ListContainerOptions options =
                     new org.jclouds.blobstore.options.ListContainerOptions()
                             .prefix(path)
                             .recursive();
 
-            blobStore.clearContainer(container, options);
+            int retry = 0;
+            int delayMs = 1000;
+            boolean deleted = false;
 
-            // NOTE: this is messy but it seems to work.
-            // there might be a more effecient way of doing this.
-            boolean deleted = blobStore.list(container, options).isEmpty();
+            for (; retry < RETRIES && !deleted; retry++) {
+                blobStore.clearContainer(container, options);
 
-            if (deleted && notifier != null) {
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException e) {
+                    log.debug(e.getMessage());
+                }
+                delayMs *= 2;
+
+                // NOTE: this is messy but it seems to work.
+                // there might be a more effecient way of doing this.
+                deleted = blobStore.list(container, options).isEmpty();
+            }
+
+            if (!deleted) {
+                log.error(
+                        String.format(
+                                "Failed to delete Swift tile cache at %s/%s after %d retries.",
+                                container, path, RETRIES));
+            } else if (notifier != null) {
                 notifier.notifyListeners();
             }
         }
     }
 
     protected boolean deleteByPath(String path, IBlobStoreListenerNotifier notifier) {
-        new Thread(new SwiftBlobStoreDeleteRunnable(blobStore, path, containerName, notifier))
-                .start();
+        // Cancel all pending uploads
+        Object[] tasks = taskQueue.toArray();
+        taskQueue.clear();
 
-        log.debug("Removing " + path + " from container " + containerName + " in Swift blobstore.");
+        for (Object task : tasks) {
+            if (task instanceof SwiftDeleteTask) {
+                executor.execute((SwiftDeleteTask) task);
+            }
+        }
+
+        // Queue deletion
+        executor.execute(new SwiftDeleteTask(blobStore, path, containerName, notifier));
+
+        log.debug(String.format("Deleting Swift tile cache at %s/%s", containerName, path));
 
         // This operation can take a long time to complete and can
         // lead to timeout errors for the end-user when handled as a blocking
