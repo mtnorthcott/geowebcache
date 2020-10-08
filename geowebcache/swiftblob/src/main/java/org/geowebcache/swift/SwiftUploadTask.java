@@ -25,7 +25,7 @@ import org.jclouds.io.Payload;
 import org.jclouds.openstack.swift.v1.domain.SwiftObject;
 import org.jclouds.openstack.swift.v1.features.ObjectApi;
 
-public class SwiftUploadTask implements Runnable {
+class SwiftUploadTask implements Runnable {
     static final Log log = LogFactory.getLog(SwiftUploadTask.class);
     static final String logStr = "%s, %s, %dms";
 
@@ -34,7 +34,7 @@ public class SwiftUploadTask implements Runnable {
     private final ObjectApi objectApi;
     private final BlobStoreListenerList listeners;
 
-    public SwiftUploadTask(
+    SwiftUploadTask(
             String key, SwiftTile tile, BlobStoreListenerList listeners, ObjectApi objectApi) {
         this.key = key;
         this.tile = tile;
@@ -70,6 +70,7 @@ public class SwiftUploadTask implements Runnable {
         }
     }
 
+    @Override
     public void run() {
         log.debug("Processing " + key);
 

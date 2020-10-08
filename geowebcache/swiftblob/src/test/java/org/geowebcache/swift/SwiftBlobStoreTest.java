@@ -281,7 +281,7 @@ public class SwiftBlobStoreTest {
         verify(this.swiftBlobStore, times(0)).deleteByPath(eq(layerPrefix), anyObject());
         verify(this.testListeners, times(0)).sendLayerDeleted(VALID_TEST_LAYER_NAME);
         assertTrue(this.swiftBlobStore.delete(VALID_TEST_LAYER_NAME));
-        Thread.sleep(500);
+        Thread.sleep(1500);
         verify(this.swiftBlobStore, times(1)).deleteByPath(eq(layerPrefix), anyObject());
         verify(this.testListeners, times(1)).sendLayerDeleted(VALID_TEST_LAYER_NAME);
 
@@ -290,7 +290,7 @@ public class SwiftBlobStoreTest {
             this.swiftBlobStore.delete((String) null);
             fail("Null check for layer name failed");
         } catch (NullPointerException e) {
-            Thread.sleep(500);
+            Thread.sleep(1500);
             verify(this.swiftBlobStore, times(0)).deleteByPath(eq(null), anyObject());
             verify(this.testListeners, times(0)).sendLayerDeleted(null);
         }

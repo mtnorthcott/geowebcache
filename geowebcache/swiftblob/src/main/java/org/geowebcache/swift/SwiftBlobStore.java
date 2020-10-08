@@ -129,7 +129,8 @@ public class SwiftBlobStore implements BlobStore {
             final String key = keyBuilder.forTile(obj);
 
             executor.execute(new SwiftUploadTask(key, tile, listeners, objectApi));
-            log.debug("Added upload request to task queue. Queue length is now " + taskQueue.size());
+            log.debug(
+                    "Added upload request to task queue. Queue length is now " + taskQueue.size());
         } catch (IOException e) {
             throw new StorageException("Could not process tile object for upload.");
         }
@@ -374,65 +375,6 @@ public class SwiftBlobStore implements BlobStore {
         }
 
         return deletionSuccessful;
-    }
-
-    protected interface IBlobStoreListenerNotifier {
-        void notifyListeners();
-    }
-
-    private class SwiftDeleteTask implements Runnable {
-        private static final int RETRIES = 5;
-        private final RegionScopedSwiftBlobStore blobStore;
-        private final String path;
-        private final String container;
-        private final IBlobStoreListenerNotifier notifier;
-
-        private SwiftDeleteTask(
-                RegionScopedSwiftBlobStore blobStore,
-                String path,
-                String container,
-                IBlobStoreListenerNotifier notifier) {
-            this.blobStore = blobStore;
-            this.path = path;
-            this.container = container;
-            this.notifier = notifier;
-        }
-
-        @Override
-        public void run() {
-            final org.jclouds.blobstore.options.ListContainerOptions options =
-                    new org.jclouds.blobstore.options.ListContainerOptions()
-                            .prefix(path)
-                            .recursive();
-
-            int retry = 0;
-            int delayMs = 1000;
-            boolean deleted = false;
-
-            for (; retry < RETRIES && !deleted; retry++) {
-                blobStore.clearContainer(container, options);
-
-                try {
-                    Thread.sleep(delayMs);
-                } catch (InterruptedException e) {
-                    log.debug(e.getMessage());
-                }
-                delayMs *= 2;
-
-                // NOTE: this is messy but it seems to work.
-                // there might be a more effecient way of doing this.
-                deleted = blobStore.list(container, options).isEmpty();
-            }
-
-            if (!deleted) {
-                log.error(
-                        String.format(
-                                "Failed to delete Swift tile cache at %s/%s after %d retries.",
-                                container, path, RETRIES));
-            } else if (notifier != null) {
-                notifier.notifyListeners();
-            }
-        }
     }
 
     protected boolean deleteByPath(String path, IBlobStoreListenerNotifier notifier) {
