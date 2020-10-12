@@ -669,40 +669,54 @@ public class SwiftBlobStoreTest {
                                 taskQueue,
                                 new ThreadPoolExecutor.CallerRunsPolicy()));
 
+        // Must create three runnables
+        //    1) consumed immediately which blocks for a time
+        //    2) a mock upload to cancel when we delete the path being uploaded to
+        //    3) a mock upload to proceed as its not on the same path
         Runnable mockUpload1 =
                 () -> {
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(200);
                     } catch (InterruptedException e) {
                     }
                 };
-        Runnable mockUpload2 =
-                () -> {
-                    try {
-                        Thread.sleep(10000);
-                    } catch (InterruptedException e) {
-                    }
-                };
+        SwiftUploadTask mockUpload2 = mock(SwiftUploadTask.class);
+        SwiftUploadTask mockUpload3 = mock(SwiftUploadTask.class);
+
+        // Matching upload where getKey() returns a file in the delete path
+        when(mockUpload2.getKey()).thenReturn("path/tile.png");
+
+        // Non-matching upload where getKey() returns a different path
+        when(mockUpload3.getKey()).thenReturn("anotherpath/tile.png");
 
         ReflectionTestUtils.setField(swiftBlobStore, "taskQueue", taskQueue);
         ReflectionTestUtils.setField(swiftBlobStore, "executor", executor);
 
+        // Ensure queue is empty and no tasks have been run
         verify(executor, times(0)).execute(any(Runnable.class));
         assertTrue(taskQueue.isEmpty());
 
+        // Queue runnables
         executor.execute(mockUpload1);
         executor.execute(mockUpload2);
+        executor.execute(mockUpload3);
 
-        assertEquals(1, taskQueue.size());
+        // Ensure first task is consumed while second is waiting
+        assertEquals(2, taskQueue.size());
         assertFalse(taskQueue.contains(mockUpload1)); // Should be executing
         assertTrue(taskQueue.contains(mockUpload2)); // Should be enqueued
+        assertTrue(taskQueue.contains(mockUpload3)); // Should be enqueued
 
+        // Deletion routine which cancels upload tasks destined for the same path
         swiftBlobStore.deleteByPath("path");
 
-        verify(taskQueue, times(1)).clear();
+        // Assert mockUpload2 is cancelled but mockUpload3 is not
+        verify(taskQueue, times(1)).remove(eq(mockUpload2));
+        verify(taskQueue, times(0)).remove(eq(mockUpload3));
         verify(executor, times(1)).execute(any(SwiftDeleteTask.class));
-        assertEquals(1, taskQueue.size());
+        assertEquals(2, taskQueue.size());  // mockUpload3 and a SwiftDeleteTask as above
         assertFalse(taskQueue.contains(mockUpload1));
         assertFalse(taskQueue.contains(mockUpload2));
+        assertTrue(taskQueue.contains(mockUpload3));
     }
 }

@@ -378,17 +378,27 @@ public class SwiftBlobStore implements BlobStore {
     }
 
     protected boolean deleteByPath(String path, IBlobStoreListenerNotifier notifier) {
-        // Cancel all pending uploads
-        Object[] tasks = taskQueue.toArray();
-        taskQueue.clear();
+        // Cancel all pending uploads to this path
+        for (Object task : taskQueue.toArray()) {
+            // Only cancel uploads. Leave all existing SwiftDeletionTask objects in queue
+            if (task instanceof SwiftUploadTask) {
+                SwiftUploadTask uploadTask = (SwiftUploadTask) task;
+                String key = uploadTask.getKey(); // path to tile image
 
-        for (Object task : tasks) {
-            if (task instanceof SwiftDeleteTask) {
-                executor.execute((SwiftDeleteTask) task);
+                // Cancel upload if image path will be deleted by this operation
+                if (key.startsWith(path)) {
+                    boolean success = taskQueue.remove(task);
+
+                    if (success) {
+                        log.debug("Cancelled upload of " + key);
+                    } else {
+                        log.debug("Failed to cancel upload of " + key);
+                    }
+                }
             }
         }
 
-        // Queue deletion
+        // Create task to delete this path and add it to the executor queue
         executor.execute(new SwiftDeleteTask(blobStore, path, containerName, notifier));
 
         log.debug(String.format("Deleting Swift tile cache at %s/%s", containerName, path));

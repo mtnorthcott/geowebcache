@@ -45,32 +45,37 @@ class SwiftDeleteTask implements Runnable {
     public void run() {
         final ListContainerOptions options = new ListContainerOptions().prefix(path).recursive();
 
-        int retry = 0;
         int delayMs = 1000;
         boolean deleted = false;
 
-        for (; retry < RETRIES && !deleted; retry++) {
+        // Attempt to delete path and increase timeout exponentially with each consective failure
+        for (int retry = 0; retry < RETRIES && !deleted; retry++) {
             blobStore.clearContainer(container, options);
 
+            // Wait before checking if deletion was successful
             try {
                 Thread.sleep(delayMs);
             } catch (InterruptedException e) {
                 log.debug(e.getMessage());
             }
-            delayMs *= 2;
+            delayMs *= 2; // Exponential backoff
 
             // NOTE: this is messy but it seems to work.
             // there might be a more effecient way of doing this.
             deleted = blobStore.list(container, options).isEmpty();
         }
 
-        if (!deleted) {
+        if (deleted) {
+            log.info(String.format("Deleted Swift tile cache at %s/%s", container, path));
+
+            if (notifier != null) {
+                notifier.notifyListeners();
+            }
+        } else {
             log.error(
                     String.format(
                             "Failed to delete Swift tile cache at %s/%s after %d retries.",
                             container, path, RETRIES));
-        } else if (notifier != null) {
-            notifier.notifyListeners();
         }
     }
 }

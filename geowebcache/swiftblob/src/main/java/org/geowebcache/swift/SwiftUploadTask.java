@@ -70,6 +70,10 @@ class SwiftUploadTask implements Runnable {
         }
     }
 
+    public String getKey() {
+        return key;
+    }
+
     @Override
     public void run() {
         log.debug("Processing " + key);
