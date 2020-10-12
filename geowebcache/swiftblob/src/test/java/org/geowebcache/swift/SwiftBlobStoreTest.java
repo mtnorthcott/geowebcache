@@ -23,6 +23,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.geowebcache.io.ByteArrayResource;
 import org.geowebcache.io.Resource;
 import org.geowebcache.layer.TileLayerDispatcher;
@@ -650,5 +654,55 @@ public class SwiftBlobStoreTest {
         verify(this.testListeners, times(1))
                 .sendParametersDeleted(VALID_TEST_LAYER_NAME, testParametersId);
         assertFalse(outcome);
+    }
+
+    @Test
+    public void deleteWhenUploadExists() throws Exception {
+        BlockingQueue<Runnable> taskQueue = spy(new LinkedBlockingQueue<>(1000));
+        ThreadPoolExecutor executor =
+                spy(
+                        new ThreadPoolExecutor(
+                                1,
+                                1,
+                                60L,
+                                TimeUnit.SECONDS,
+                                taskQueue,
+                                new ThreadPoolExecutor.CallerRunsPolicy()));
+
+        Runnable mockUpload1 =
+                () -> {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                    }
+                };
+        Runnable mockUpload2 =
+                () -> {
+                    try {
+                        Thread.sleep(10000);
+                    } catch (InterruptedException e) {
+                    }
+                };
+
+        ReflectionTestUtils.setField(swiftBlobStore, "taskQueue", taskQueue);
+        ReflectionTestUtils.setField(swiftBlobStore, "executor", executor);
+
+        verify(executor, times(0)).execute(any(Runnable.class));
+        assertTrue(taskQueue.isEmpty());
+
+        executor.execute(mockUpload1);
+        executor.execute(mockUpload2);
+
+        assertEquals(1, taskQueue.size());
+        assertFalse(taskQueue.contains(mockUpload1)); // Should be executing
+        assertTrue(taskQueue.contains(mockUpload2)); // Should be enqueued
+
+        swiftBlobStore.deleteByPath("path");
+
+        verify(taskQueue, times(1)).clear();
+        verify(executor, times(1)).execute(any(SwiftDeleteTask.class));
+        assertEquals(1, taskQueue.size());
+        assertFalse(taskQueue.contains(mockUpload1));
+        assertFalse(taskQueue.contains(mockUpload2));
     }
 }

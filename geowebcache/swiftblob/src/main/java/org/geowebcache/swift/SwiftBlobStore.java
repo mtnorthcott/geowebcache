@@ -70,8 +70,8 @@ public class SwiftBlobStore implements BlobStore {
 
     private final RegionScopedSwiftBlobStore blobStore;
 
-    private final ThreadPoolExecutor executor;
-    private final BlockingQueue<Runnable> taskQueue;
+    private ThreadPoolExecutor executor;
+    private BlockingQueue<Runnable> taskQueue;
 
     public SwiftBlobStore(SwiftBlobStoreInfo config, TileLayerDispatcher layers) {
 
